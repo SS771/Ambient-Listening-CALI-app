@@ -1,8 +1,3 @@
-# Chroma Database
-* used by the agent as a knowledge database
-* directory set by the `agent_database_dir` env variable
-* download from box: https://ibm.ent.box.com/folder/350794264111
-* unzip in the root of the project - ie `<REPO ROOT>/content/chroma/chroma.sqlite3` should be created
 
 # Environment variables
 * jwt_secret_key = <random string; try cmd : `openssl rand -hex 32`>
