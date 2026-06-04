@@ -1,0 +1,104 @@
+Pre-requisites:
+You will need podman installed and a local mysql instance to connect to.
+Clone https://github.com/openemr/openemr-devops
+Navigate to release version you'd like to use, e.g. /openemr/openemr-devops/docker/openemr/7.0.3
+Edit Dockerfile, add a new line "ENV MYSQL_HOST=host.containers.internal" right above CMD [ "./openemr.sh" ]
+Build the image:  podman build -f Dockerfile -t openemr-local
+
+
+1a. If you have previously run openEMR against your local db, clear out the install debris
+	> mysql -u root
+	> drop database openemr;
+	> use mysql;
+	> drop user 'openemr'@'localhost';
+
+	> Or, against the RDS instance in wavelength:
+	> kubectl run mysql-client --image=mysql:5.7 -it --rm --restart=Never -- /bin/bash
+    > mysql -h wlc-openemr-wavelength.cn756c5trc0k.us-east-1.rds.amazonaws.com -u admin -p
+    > drop database openemr;
+    > drop user 'openemr'@'10.2.1.202';
+    > (User's IP will be whatever value is returned as the IP of the openemr pod from kubectl get pods -o wide)
+
+1b. Dockerized sql container - only if not running mysql on local machine
+	> podman run -e MARIADB_ROOT_PASSWORD=password mariadb:11.4
+	> find IP of sql & openemr container needed for step 3: 'podman network inspect podman' or 'docker network inspect bridge'
+		> podman and bridge are default network names, you may need 'docker/podman network inspect' to track down the IPs
+	> during install process (step 3)
+		> "User Hostname" = ip of openemr container (the ip of what you're connecting FROM)
+		> "Server Host" = ip of sql container (the ip of what you're connecting TO)
+		> "Root Password" = password
+	> if using fresh container for every openemr setup you shouldn't have to do any cleanup from 1
+	
+
+2. Start container
+	> podman machine init (if needed)
+	> podman machine start (if needed)
+	> podman run -p 8080:80 openemr-local
+
+
+3. Go through install process
+	> in browser go to localhost:8080/
+	> select "Have setup create the database"
+	> Server host should be "host.containers.internal"
+	> Leave everything else as default, can use "openemr" as password for db user
+	> For initial user name, I use "openemr-local-admin". Same value for password.
+
+
+(site will spin for a while, then finish set up by clicking through next steps)	
+
+
+4. Turn on REST API and password grant
+	> Log in to localhost:8080/ with user created during install
+	> At the top, go to Admin > Config
+	> Select Connectors
+	> Enable checkbox for "Enable OpenEMR Standard REST API"
+	> Enable "Enable OAuth2 Password Grant"
+	> Click "Save"
+
+5. Create an API Client
+	> curl -X POST -k -H 'Content-Type: application/json' -i http://localhost:8080/oauth2/default/registration --data '{
+      "application_type": "private",
+      "redirect_uris":
+      ["http://0.0.0.0:5000/oauth2/default"],
+      "post_logout_redirect_uris":
+      ["https://client.example.org/logout/callback"],
+      "client_name": "Full Access API Client",
+      "token_endpoint_auth_method": "client_secret_post",
+      "contacts": ["me@example.org", "them@example.org"],
+      "scope": "openid offline_access api:oemr api:fhir api:port user/allergy.read user/allergy.write user/appointment.read user/appointment.write user/dental_issue.read user/dental_issue.write user/document.read user/document.write user/drug.read user/encounter.read user/encounter.write user/facility.read user/facility.write user/immunization.read user/insurance.read user/insurance.write user/insurance_company.read user/insurance_company.write user/insurance_type.read user/list.read user/medical_problem.read user/medical_problem.write user/medication.read user/medication.write user/message.write user/patient.read user/patient.write user/practitioner.read user/practitioner.write user/prescription.read user/procedure.read user/soap_note.read user/soap_note.write user/surgery.read user/surgery.write user/transaction.read user/transaction.write user/vital.read user/vital.write user/AllergyIntolerance.read user/CareTeam.read user/Condition.read user/Coverage.read user/Encounter.read user/Immunization.read user/Location.read user/Medication.read user/MedicationRequest.read user/Observation.read user/Organization.read user/Organization.write user/Patient.read user/Patient.write user/Practitioner.read user/Practitioner.write user/PractitionerRole.read user/Procedure.read patient/AllergyIntolerance.read patient/CareTeam.read patient/Condition.read patient/Coverage.read patient/Encounter.read patient/Immunization.read patient/MedicationRequest.read patient/Observation.read patient/Patient.read patient/Procedure.read"
+      }'
+    > In OpenEMR, go to Admin > System > API Clients
+    > Find client you have just created
+    > Click "Edit"
+    > Click "Enable Client"
+
+    > Example of the post against the wavelength openemr, with the wavelength cluster version of the redirect uri
+    > curl -X POST -k -H 'Content-Type: application/json' -i https://openemr-wlc-atlanta.watsonmedia.ibm.com/oauth2/default/registration --data '{
+          "application_type": "private",
+          "redirect_uris":
+          ["https://session-cordination-wlc-atlanta.watsonmedia.ibm.com/oauth2/default"],
+          "post_logout_redirect_uris":
+          ["https://client.example.org/logout/callback"],
+          "client_name": "Full Access API Client",
+          "token_endpoint_auth_method": "client_secret_post",
+          "contacts": ["me@example.org", "them@example.org"],
+          "scope": "openid offline_access api:oemr api:fhir api:port user/allergy.read user/allergy.write user/appointment.read user/appointment.write user/dental_issue.read user/dental_issue.write user/document.read user/document.write user/drug.read user/encounter.read user/encounter.write user/facility.read user/facility.write user/immunization.read user/insurance.read user/insurance.write user/insurance_company.read user/insurance_company.write user/insurance_type.read user/list.read user/medical_problem.read user/medical_problem.write user/medication.read user/medication.write user/message.write user/patient.read user/patient.write user/practitioner.read user/practitioner.write user/prescription.read user/procedure.read user/soap_note.read user/soap_note.write user/surgery.read user/surgery.write user/transaction.read user/transaction.write user/vital.read user/vital.write user/AllergyIntolerance.read user/CareTeam.read user/Condition.read user/Coverage.read user/Encounter.read user/Immunization.read user/Location.read user/Medication.read user/MedicationRequest.read user/Observation.read user/Organization.read user/Organization.write user/Patient.read user/Patient.write user/Practitioner.read user/Practitioner.write user/PractitionerRole.read user/Procedure.read patient/AllergyIntolerance.read patient/CareTeam.read patient/Condition.read patient/Coverage.read patient/Encounter.read patient/Immunization.read patient/MedicationRequest.read patient/Observation.read patient/Patient.read patient/Procedure.read"
+          }'
+
+[Depricated - for demos auth is now handled by client]
+6. Authorize the API Client in browser
+	> (In browser. Your client ID will be different) http://localhost:8080/oauth2/default/authorize?client_id=bXU5MwESyuQ4_U0E2bY6FLXtjJOKuF7JN5o7cvrgO6M&response_type=code&scope=openid%20offline_access%20api%3Aoemr%20api%3Afhir%20api%3Aport%20user%2Fallergy.read%20user%2Fallergy.write%20user%2Fappointment.read%20user%2Fappointment.write%20user%2Fdental_issue.read%20user%2Fdental_issue.write%20user%2Fdocument.read%20user%2Fdocument.write%20user%2Fdrug.read%20user%2Fencounter.read%20user%2Fencounter.write%20user%2Ffacility.read%20user%2Ffacility.write%20user%2Fimmunization.read%20user%2Finsurance.read%20user%2Finsurance.write%20user%2Finsurance_company.read%20user%2Finsurance_company.write%20user%2Finsurance_type.read%20user%2Flist.read%20user%2Fmedical_problem.read%20user%2Fmedical_problem.write%20user%2Fmedication.read%20user%2Fmedication.write%20user%2Fmessage.write%20user%2Fpatient.read%20user%2Fpatient.write%20user%2Fpractitioner.read%20user%2Fpractitioner.write%20user%2Fprescription.read%20user%2Fprocedure.read%20user%2Fsoap_note.read%20user%2Fsoap_note.write%20user%2Fsurgery.read%20user%2Fsurgery.write%20user%2Ftransaction.read%20user%2Ftransaction.write%20user%2Fvital.read%20user%2Fvital.write%20user%2FAllergyIntolerance.read%20user%2FCareTeam.read%20user%2FCondition.read%20user%2FCoverage.read%20user%2FEncounter.read%20user%2FImmunization.read%20user%2FLocation.read%20user%2FMedication.read%20user%2FMedicationRequest.read%20user%2FObservation.read%20user%2FOrganization.read%20user%2FOrganization.write%20user%2FPatient.read%20user%2FPatient.write%20user%2FPractitioner.read%20user%2FPractitioner.write%20user%2FPractitionerRole.read%20user%2FProcedure.read%20patient%2FAllergyIntolerance.read%20patient%2FCareTeam.read%20patient%2FCondition.read%20patient%2FCoverage.read%20patient%2FEncounter.read%20patient%2FImmunization.read%20patient%2FMedicationRequest.read%20patient%2FObservation.read%20patient%2FPatient.read%20patient%2FProcedure.read&redirect_uri=http%3A%2F%2F0.0.0.0%3A5000%2Foauth2%2Fdefault&state=9512151b-e5ca-cb4b-1ddc-aaf4cd8c6ecc
+	    > Example of how it looks against the wavelength openemr. In browser. Your client ID will be different.
+	    > https://openemr-wlc-atlanta.watsonmedia.ibm.com/oauth2/default/authorize?client_id=TMSJMZoW77oANwkVYFYniHEpwYA58ePcmH2ay6wIOD0&response_type=code&scope=openid%20offline_access%20api%3Aoemr%20api%3Afhir%20api%3Aport%20user%2Fallergy.read%20user%2Fallergy.write%20user%2Fappointment.read%20user%2Fappointment.write%20user%2Fdental_issue.read%20user%2Fdental_issue.write%20user%2Fdocument.read%20user%2Fdocument.write%20user%2Fdrug.read%20user%2Fencounter.read%20user%2Fencounter.write%20user%2Ffacility.read%20user%2Ffacility.write%20user%2Fimmunization.read%20user%2Finsurance.read%20user%2Finsurance.write%20user%2Finsurance_company.read%20user%2Finsurance_company.write%20user%2Finsurance_type.read%20user%2Flist.read%20user%2Fmedical_problem.read%20user%2Fmedical_problem.write%20user%2Fmedication.read%20user%2Fmedication.write%20user%2Fmessage.write%20user%2Fpatient.read%20user%2Fpatient.write%20user%2Fpractitioner.read%20user%2Fpractitioner.write%20user%2Fprescription.read%20user%2Fprocedure.read%20user%2Fsoap_note.read%20user%2Fsoap_note.write%20user%2Fsurgery.read%20user%2Fsurgery.write%20user%2Ftransaction.read%20user%2Ftransaction.write%20user%2Fvital.read%20user%2Fvital.write%20user%2FAllergyIntolerance.read%20user%2FCareTeam.read%20user%2FCondition.read%20user%2FCoverage.read%20user%2FEncounter.read%20user%2FImmunization.read%20user%2FLocation.read%20user%2FMedication.read%20user%2FMedicationRequest.read%20user%2FObservation.read%20user%2FOrganization.read%20user%2FOrganization.write%20user%2FPatient.read%20user%2FPatient.write%20user%2FPractitioner.read%20user%2FPractitioner.write%20user%2FPractitionerRole.read%20user%2FProcedure.read%20patient%2FAllergyIntolerance.read%20patient%2FCareTeam.read%20patient%2FCondition.read%20patient%2FCoverage.read%20patient%2FEncounter.read%20patient%2FImmunization.read%20patient%2FMedicationRequest.read%20patient%2FObservation.read%20patient%2FPatient.read%20patient%2FProcedure.read&redirect_uri=https%3A%2F%2Fsession-cordination-wlc-atlanta.watsonmedia.ibm.com%2Foauth2%2Fdefault&state=9512151b-e5ca-cb4b-1ddc-aaf4cd8c6ecc
+	> Log in with the user/pass created above (openemr-local-admin/openemr-local-admin)
+	> If session coordinator is running, it will receive one redirect with an authorization code
+	> It will then make another post to retrieve a token, which will also receive the redirect that contains the access token
+    > If you spin up the app and start a session, everything should be working
+
+[Deprecated]
+7. Get a token using user/pass - only use this if code is reverted to use the
+	> Client ID param should match client ID you created above
+	> Pay attention to end of below curl command if you used a different user or pass: &user_role=users&username=openemr-local-admin&password=openemr-local-admin
+	> curl -X POST -k -H 'Content-Type: application/x-www-form-urlencoded' -i 'http://localhost:8080/oauth2/default/token' --data 'grant_type=password&client_id=qARIpOYU9zNSHuo6r5FP-xL6sxv3sRANjlgCj7Z3TpY&scope=openid%20offline_access%20api%3Aoemr%20api%3Afhir%20user%2Fallergy.read%20user%2Fallergy.write%20user%2Fappointment.read%20user%2Fappointment.write%20user%2Fdental_issue.read%20user%2Fdental_issue.write%20user%2Fdocument.read%20user%2Fdocument.write%20user%2Fdrug.read%20user%2Fencounter.read%20user%2Fencounter.write%20user%2Ffacility.read%20user%2Ffacility.write%20user%2Fimmunization.read%20user%2Finsurance.read%20user%2Finsurance.write%20user%2Finsurance_company.read%20user%2Finsurance_company.write%20user%2Finsurance_type.read%20user%2Flist.read%20user%2Fmedical_problem.read%20user%2Fmedical_problem.write%20user%2Fmedication.read%20user%2Fmedication.write%20user%2Fmessage.write%20user%2Fpatient.read%20user%2Fpatient.write%20user%2Fpractitioner.read%20user%2Fpractitioner.write%20user%2Fprescription.read%20user%2Fprocedure.read%20user%2Fsoap_note.read%20user%2Fsoap_note.write%20user%2Fsurgery.read%20user%2Fsurgery.write%20user%2Ftransaction.read%20user%2Ftransaction.write%20user%2Fvital.read%20user%2Fvital.write%20user%2FAllergyIntolerance.read%20user%2FCareTeam.read%20user%2FCondition.read%20user%2FCoverage.read%20user%2FEncounter.read%20user%2FImmunization.read%20user%2FLocation.read%20user%2FMedication.read%20user%2FMedicationRequest.read%20user%2FObservation.read%20user%2FOrganization.read%20user%2FOrganization.write%20user%2FPatient.read%20user%2FPatient.write%20user%2FPractitioner.read%20user%2FPractitioner.write%20user%2FPractitionerRole.read%20user%2FProcedure.read&user_role=users&username=openemr-local-admin&password=openemr-local-admin'
+	> If everything above was done correctly, you will get a 200 with large response
+		> The "access_token" value is your token, good for one hour

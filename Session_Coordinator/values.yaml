@@ -1,0 +1,47 @@
+namespace: default
+scope: ""
+
+replicaCount: 1
+imagePullSecret: bx-registry
+image:
+  repository: watsonmedia-wlc/sessionlayer
+  tag: 1.0.6
+  pullPolicy: IfNotPresent
+service:
+  name: session-coordination
+  type: ClusterIP
+  port: 5000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+global:
+  dockerRegistry: us.icr.io/
+  clusterName: wlc-staging-dal10
+  publicClusterName: wlc-staging
+  domainName: watsonmedia.ibm.com
+  ingressHostPrefix: session-coordination
+  ingressTLSCert: wc-watsonmedia-ibm-com
+  
+persistentVolumeClaim:
+  # set to true to use pvc
+  enabled: false
+  # set to true to use you own pvc
+  existingClaim: false
+  annotations: {}
+
+  accessModes:
+    - ReadWriteOnce
+  size: "30Gi"
+  ## If defined, storageClassName: <storageClass>
+  ## If set to "-", storageClassName: "", which disables dynamic provisioning
+  ## If undefined (the default) or set to null, no storageClassName spec is
+  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+  ##   GKE, AWS & OpenStack)
+  ##
+  storageClass: "ibmc-file-gold-gid"

@@ -1,0 +1,12 @@
+python-socketio
+uvicorn
+websockets
+requests
+fastapi[standard]
+PyJWT
+langchain_ibm
+langchain-core
+langchain
+langchain-classic
+langchain-community
+chromadb

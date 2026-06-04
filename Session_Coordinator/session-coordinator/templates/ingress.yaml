@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: session-coordination-ingress
+  labels:
+    app: session-coordination
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+    #ingress.bluemix.net/client-max-body-size: "size=100m"
+    ingress.bluemix.net/redirect-to-https: "True"
+spec:
+  ingressClassName: public-iks-k8s-nginx
+  tls:
+  - hosts:
+    - {{ .Values.global.ingressHostPrefix }}-{{ .Values.global.publicClusterName }}.{{ .Values.global.domainName }}  
+    secretName: {{ .Values.global.ingressTLSCert }}
+  rules:
+  - host: {{ .Values.global.ingressHostPrefix }}-{{ .Values.global.publicClusterName }}.{{ .Values.global.domainName }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.service.name }}
+            port: 
+              number: {{ .Values.service.port }}
